@@ -1,0 +1,13 @@
+---
+description: library for stm lis2hh12 chip. 
+fullname: lib.stm.lis2hh12
+info:
+    chip_manufacturer: stm 
+    chip_name: '-'
+    name: Zerynth stm lis2hh12 Library
+    type: Utility
+keywords:
+- stm 
+- sensors
+title: STM LIS2HH12 Chip Library
+...
