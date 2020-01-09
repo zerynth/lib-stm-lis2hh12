@@ -62,6 +62,27 @@ _SO_8G = 0.244 # 0.244 mg / digit
 SF_G = 0.001 # 1 mg = 0.001 g
 SF_SI = 0.00980665 # 1 mg = 0.00980665 m/s2
 
+
+@c_native("_lis2hh12_read_reg8",["csrc/lis2hh12.c"])
+def _lis2hh12_read_reg8(spi,reg):
+    pass
+
+@c_native("_lis2hh12_read_reg16",["csrc/lis2hh12.c"])
+def _lis2hh12_read_reg16(spi,reg):
+    pass
+
+@c_native("_lis2hh12_read_reg16x3",["csrc/lis2hh12.c"])
+def _lis2hh12_read_reg16x3(spi,reg):
+    pass
+
+@c_native("_lis2hh12_write_reg8",["csrc/lis2hh12.c"])
+def _lis2hh12_write_reg8(spi,reg,value):
+    pass
+
+@c_native("_lis2hh12_write_reg16",["csrc/lis2hh12.c"])
+def _lis2hh12_write_reg16(spi,reg,value):
+    pass
+
 class LIS2HH12(spi.Spi):
     """
 .. class:: LIS2HH12
@@ -71,19 +92,21 @@ class LIS2HH12(spi.Spi):
 
     def __init__(self, spidrv, pin_cs, clk=5000000, odr=ODR_100HZ, fs=FS_2G, sf=SF_SI):
         """
-.. method:: __init__(spidrv, pin_cs, clk=500000, odr=ODR_100HZ, fs=FS_2G, sf=SF_SI)
+.. method:: __init__(spidrv, pin_cs, clk=5000000, odr=ODR_100HZ, fs=FS_2G, sf=SF_SI)
 
         Creates an instance of LIS2HH12 class, using the specified SPI settings
         and initial device configuration.
 
         :param spidrv: the *SPI* driver to use (SPI0, ...)
         :param pin_cs: Chip select pin to access the NCV7240 chip
-        :param clk: Clock speed, default 500 kHz
+        :param clk: Clock speed, default 5 MHz
         :param odr: Device output data rate, default 100 Hz
         :param fs: Device full-scale setting, default +/-2g
         :param sf: Scaling factor, one of ``SF_G`` (unit=g) or ``SF_SI`` (unit=m/s^2 default)
         """
         spi.Spi.__init__(self,pin_cs,spidrv,clock=clk)
+        # for native functions
+        self.spi = spidrv & 0xFF
 
         #print(self.whoami())
         if 0x41 != self.whoami():
@@ -109,13 +132,29 @@ class LIS2HH12(spi.Spi):
         values in **m/s^2**. Will return values in **g** if constructor was provided \
         :samp:`sf=SF_G` parameter.
         """
-        so = self._so
-        sf = self._sf
+        f = self._so * self._sf
 
-        x = self._register_word(_OUT_X_L) * so * sf
-        y = self._register_word(_OUT_Y_L) * so * sf
-        z = self._register_word(_OUT_Z_L) * so * sf
-        return (x, y, z)
+        # x = self._register_word(_OUT_X_L) * f
+        # y = self._register_word(_OUT_Y_L) * f
+        # z = self._register_word(_OUT_Z_L) * f
+        # return (x,y,z)
+
+        self.lock()
+        self.select()
+        ex = None
+        ret = None
+        try:
+            ret = _lis2hh12_read_reg16x3(self.spi, _OUT_X_L)
+            ret = (ret[0] * f, ret[1] * f, ret[2] * f)
+            # (x,y,z) = _lis2hh12_read_reg16x3(self.spi, _OUT_X_L)
+            # ret = (x * f, y * f, z * f)
+        except Exception as e:
+            ex = e
+        self.unselect()
+        self.unlock()
+        if ex is not None:
+            raise ex
+        return ret
 
     def temperature(self):
         """
@@ -136,45 +175,41 @@ class LIS2HH12(spi.Spi):
         """
         return self._register_char(_WHO_AM_I)
 
-    def _reg_read(self, register, fmt):
-        ex = None
-        data = struct.pack("<B", register | 0x80)
-        self.lock()
-        try:
-            self.select()
-            self.write(data)
-            data = self.read(struct.calcsize(fmt))
-        except Exception as e:
-            ex = e
-        self.unselect()
-        self.unlock()
-        if ex is not None:
-            raise ex
-        return struct.unpack(fmt, data)
-
-    def _reg_write(self, register, fmt, *values):
-        ex = None
-        data = struct.pack("<B"+fmt, register, *values)
-        self.lock()
-        try:
-            self.select()
-            self.write(data)
-        except Exception as e:
-            ex = e
-        self.unselect()
-        self.unlock()
-        if ex is not None:
-            raise ex
-
     def _register_word(self, register, value=None):
-        if value is None:
-            return self._reg_read(register, "<h")[0]
-        return self._reg_write(register, "<h", value)
+        self.lock()
+        self.select()
+        ex = None
+        ret = None
+        try:
+            if value is None:
+                ret = _lis2hh12_read_reg16(self.spi, register)
+            else:
+                ret = _lis2hh12_write_reg16(self.spi, register, value)
+        except Exception as e:
+            ex = e
+        self.unselect()
+        self.unlock()
+        if ex is not None:
+            raise ex
+        return ret
 
     def _register_char(self, register, value=None):
-        if value is None:
-            return self._reg_read(register, "b")[0]
-        return self._reg_write(register, "b", value)
+        self.lock()
+        self.select()
+        ex = None
+        ret = None
+        try:
+            if value is None:
+                ret = _lis2hh12_read_reg8(self.spi, register)
+            else:
+                ret = _lis2hh12_write_reg8(self.spi, register, value)
+        except Exception as e:
+            ex = e
+        self.unselect()
+        self.unlock()
+        if ex is not None:
+            raise ex
+        return ret
 
     def _fs(self, value):
         char = self._register_char(_CTRL4)
